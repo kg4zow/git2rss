@@ -1,0 +1,342 @@
+#!/usr/bin/env perl -w
+#
+# git2rss
+# John Simpson <jms1@jms1.net> 2023-07-25
+#
+
+require 5.005 ;
+use strict ;
+use warnings ;
+
+use Getopt::Std ;
+use POSIX qw ( strftime ) ;
+
+my %commit              = () ;      # hash => { info about each commit }
+my @cseq                = () ;      # sequence commit hashes were printed
+my $newest_t            = 0 ;       # timestamp of newest commit
+my $newest_d            = '' ;      # formatted timestamp of newest commit
+
+my %opt                 = () ;
+my $branch              = '' ;      # -b:   branch name whose history to list
+my $limit               = 0 ;       # -n:   number of commits, 0=show all
+my $do_debug            = 0 ;       # -d    debug messages
+
+########################################
+# RSS Feed attributes - not all optional values are supported
+# https://www.rssboard.org/rss-specification
+
+my $c_title             = 'git2rss test' ;
+my $c_link              = 'https://jms1.pub/' ;
+my $c_description       = 'Testing the git2rss script' ;
+
+my $c_pubDate           = '' ;      # CALC: timestamp of most recent commit
+my $c_lastBuildDate     = '' ;      # CALC: timestamp when script was run
+my $c_image_url         = '' ;      # URL of image file
+
+
+###############################################################################
+#
+# usage
+
+sub usage(;$)
+{
+    my $msg = ( shift || '' ) ;
+
+    print <<EOF ;
+$0 [options] [DIR]
+
+Generate an RSS feed from a git repository's commit history.
+
+-n ___  Include the N most recent commits in the RSS file. Without this, the
+        entire commit history will be included.
+
+-b ___  Use the history
+
+-d      Show debug messages.
+
+-h      Show this help message.
+
+EOF
+
+    if ( $msg ne '' )
+    {
+        print $msg ;
+        exit 1 ;
+    }
+
+    exit 0
+}
+
+###############################################################################
+#
+# debug
+
+sub debug(@)
+{
+    $do_debug && print @_ ;
+}
+
+###############################################################################
+#
+# Read commits into memory
+
+sub read_commits($$$)
+{
+    my $dir     = shift ;
+    my $branch  = shift ;
+    my $limit   = shift ;
+
+    ########################################
+    # Run the command
+
+    my $lopt = $limit ? "-n $limit" : '' ;
+
+    my $log_cmd = "( cd \"$dir\" && "
+        . "git log $lopt"
+        . " --no-abbrev-commit"
+        . " --no-show-signature"
+        . " --name-status"
+        . " --format=format:':commit: %H%n"
+            . ":date: %at %aD%n"
+            . ":author: %an <%aL>%n"
+            . ":subject: %s%n"
+            . ":body: %b%n"
+            . ":files:'"
+        . " \"$branch\" )" ;
+
+    debug "\$log_cmd=\"$log_cmd\"\n" ;
+
+    open ( I , "$log_cmd |" )
+        or die "$log_cmd\nERROR: $!\n" ;
+
+    ########################################
+    # Process the commits
+
+    my $the_commit  = '' ;
+    my $the_t       = 0  ;
+    my $the_date    = '' ;
+    my $the_author  = '' ;
+    my $the_email   = '' ;
+    my $the_subject = '' ;
+    my $the_body    = '' ;
+    my $the_files   = '' ;
+
+    my $in_body     = 0 ;
+    my $in_files    = 0 ;
+
+    while ( my $line = <I> )
+    {
+        debug "LINE \"$line\"\n" ;
+
+        $line =~ s|\s+$|| ;
+
+        if ( $line =~ m|^:commit: (\S+)| )
+        {
+            my $this_commit = $1 ;
+
+            if ( $the_commit ne '' )
+            {
+                ########################################
+                # Trim any extra blank lines from the end of body/files
+
+                $the_body   =~ s|\s+$||s ;
+                $the_files  =~ s|\s+$||s ;
+
+                debug <<EOF ;
+DEBUG commit=$the_commit
+DEBUG the_body start
+[$the_body]
+DEBUG the_body end
+DEBUG the_files start
+[$the_files]
+DEBUG the_files end
+EOF
+
+                ########################################
+                # Remember this commit's info
+
+                push( @cseq , $the_commit ) ;
+                $commit{$the_commit}->{'t'      } = $the_t       ;
+                $commit{$the_commit}->{'date'   } = $the_date    ;
+                $commit{$the_commit}->{'author' } = $the_author  ;
+                $commit{$the_commit}->{'email'  } = $the_email   ;
+                $commit{$the_commit}->{'subject'} = $the_subject ;
+                $commit{$the_commit}->{'body'   } = $the_body    ;
+                $commit{$the_commit}->{'files'  } = $the_files   ;
+
+                if ( $the_t > $newest_t )
+                {
+                    $newest_t = $the_t ;
+                    $newest_d = $the_date ;
+                }
+            }
+
+            ########################################
+            # Start remembering the new commit
+
+            $the_commit  = $this_commit ;
+            $the_t       = 0  ;
+            $the_date    = '' ;
+            $the_author  = '' ;
+            $the_email   = '' ;
+            $the_subject = '' ;
+            $the_body    = '' ;
+            $the_files   = '' ;
+            $in_body     = 0 ;
+            $in_files    = 0 ;
+        }
+        elsif ( $line =~ m|^:date: (\d+) (.+)$| )
+        {
+            ( $the_t , $the_date ) = ( $1 , $2 ) ;
+        }
+        elsif ( $line =~ m|^:author: (.+) <(.*)>$| )
+        {
+            ( $the_author , $the_email ) = ( $1 , $2 ) ;
+        }
+        elsif ( $line =~ m|^:subject: (.+)$| )
+        {
+            $the_subject = $1 ;
+        }
+        elsif ( $line =~ m|^:body: (.+)$| )
+        {
+            $the_body   = $1 ;
+            $in_body    = 1 ;
+            $in_files   = 0 ;
+        }
+        elsif ( $line =~ m|^:files:$| )
+        {
+            $in_body    = 0 ;
+            $in_files   = 1 ;
+        }
+        elsif ( $in_body )
+        {
+            $the_body   .= "\n$line" ;
+        }
+        elsif ( $in_files )
+        {
+            $the_files   .= "$line\n" ;
+        }
+    }
+
+    ########################################
+    # Make sure the last commit is processed
+
+    if ( $the_commit ne '' )
+    {
+        ########################################
+        # Trim any extra blank lines from the end of body/files
+
+        $the_body   =~ s|\s+$||s ;
+        $the_files  =~ s|\s+$||s ;
+
+        ########################################
+        # Remember this commit's info
+
+        push( @cseq , $the_commit ) ;
+        $commit{$the_commit}->{'t'      } = $the_t       ;
+        $commit{$the_commit}->{'date'   } = $the_date    ;
+        $commit{$the_commit}->{'author' } = $the_author  ;
+        $commit{$the_commit}->{'email'  } = $the_email   ;
+        $commit{$the_commit}->{'subject'} = $the_subject ;
+        $commit{$the_commit}->{'body'   } = $the_body    ;
+        $commit{$the_commit}->{'files'  } = $the_files   ;
+
+        if ( $the_t > $newest_t )
+        {
+            $newest_t = $the_t ;
+            $newest_d = $the_date ;
+        }
+    }
+
+    ########################################
+    # Finished
+
+    close I ;
+
+    $c_pubDate = $newest_d ;
+}
+
+###############################################################################
+#
+# Make value safe for use in XML
+
+sub cleanup($)
+{
+    my $x = shift ;
+
+    $x =~ s|<|&amp;lt;|g ;
+    $x =~ s|>|&amp;gt;|g ;
+
+    return $x ;
+}
+
+###############################################################################
+###############################################################################
+###############################################################################
+
+getopts( 'hdb:n:' , \%opt ) ;
+$opt{'h'} && usage() ;
+$do_debug   = ( $opt{'d'} ? 1 : 0 ) ;
+$branch     = ( $opt{'b'} || 'HEAD' ) ;
+$limit      = ( $opt{'n'} || 0 ) ;
+
+my $dir     = ( shift || '.' ) ;
+
+########################################
+# Get current date/time
+
+$ENV{'TZ'} = 'UTC' ;
+
+$c_lastBuildDate = strftime( '%a, %d %b %Y %H:%M:%S %z' , gmtime() ) ;
+
+########################################
+# Read commit info into memory
+
+read_commits( $dir , $branch , $limit ) ;
+
+########################################
+# Write RSS file
+
+print <<EOF ;
+<rss version="2.0">
+  <channel>
+    <title>$c_title</title>
+    <link>$c_link</link>
+    <description>$c_description</description>
+    <pubDate>$c_pubDate</pubDate>
+    <lastBuildDate>$c_lastBuildDate</lastBuildDate>
+EOF
+
+for my $c ( @cseq )
+{
+    my $title       = cleanup( $commit{$c}->{'subject'} ) ;
+    my $author      = cleanup( $commit{$c}->{'author'}  ) ;
+    my $email       = cleanup( $commit{$c}->{'email'}   ) ;
+    my $pubDate     = cleanup( $commit{$c}->{'date'}    ) ;
+    my $body        = cleanup( $commit{$c}->{'body'}    ) ;
+    my $files       = cleanup( $commit{$c}->{'files'}   ) ;
+
+    my $bf = ( $body ne '' ) ? "$body\n\n" : '' ;
+    $bf .= $files ;
+
+    print <<EOF ;
+    <item>
+      <guid>$c</guid>
+      <pubDate>$pubDate</pubDate>
+      <title>$title</title>
+      <author>$author</author>
+      <description><pre>Commit: $c
+Author: $author &amp;lt;$email&amp;gt;
+Date: $pubDate
+
+$title
+
+$bf</pre></description>
+    </item>
+EOF
+}
+
+print <<EOF ;
+  </channel>
+</rss>
+EOF
