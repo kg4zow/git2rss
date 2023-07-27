@@ -143,17 +143,31 @@ sub sanitize($)
 #
 # Read commits into memory
 
-sub read_commits($$$)
+sub read_commits($$$$)
 {
-    my $dir     = shift ;
-    my $branch  = shift ;
-    my $limit   = shift ;
+    my $dir         = shift ;
+    my $branch      = shift ;
+    my $limit       = shift ;
+    my $show_email  = shift ;
 
     ########################################
     # Info about the commits we're reading
 
     my %commit  = () ;      # hash => { attributes each commit }
     my @cseq    = () ;      # sequence commit hashes were printed
+
+    ########################################
+    # Build "author" format string
+
+    my $aformat = ':author: %an%n' ;
+    if ( $show_email eq 'full' )
+    {
+        $aformat = ':author: %an <%aE>%n' ;
+    }
+    elsif ( $show_email eq 'user' )
+    {
+        $aformat = ':author: %an <%aL>%n' ;
+    }
 
     ############################################################
     # Run the command
@@ -162,15 +176,15 @@ sub read_commits($$$)
 
     my $log_cmd = "( cd \"$dir\" && "
         . "git log $lopt"
-        . " --no-abbrev-commit"
-        . " --no-show-signature"
-        . " --name-status"
-        . " --format=format:':commit: %H%n"
-            . ":date: %at %aD%n"
-            . ":author: %an <%aL>%n"
-            . ":subject: %s%n"
-            . ":body: %b%n"
-            . ":files:'"
+        . ' --no-abbrev-commit'
+        . ' --no-show-signature'
+        . ' --name-status'
+        . ' --format=format:":commit: %H%n'
+            . ':date: %at %aD%n'
+            . $aformat
+            . ':subject: %s%n'
+            . ':body: %b%n'
+            . ':files:"'
         . ( ( $branch ne '' ) ? " '$branch'" : '' )
         . " )" ;
 
@@ -212,16 +226,6 @@ sub read_commits($$$)
                 $the_body   =~ s|\s+$||s ;
                 $the_files  =~ s|\s+$||s ;
 
-                debug <<EOF ;
-DEBUG commit=$the_commit
-DEBUG the_body start
-[$the_body]
-DEBUG the_body end
-DEBUG the_files start
-[$the_files]
-DEBUG the_files end
-EOF
-
                 ########################################
                 # Remember this commit's info
 
@@ -256,6 +260,10 @@ EOF
         elsif ( $line =~ m|^:author: (.+) <(.*)>$| )
         {
             ( $the_author , $the_email ) = ( $1 , $2 ) ;
+        }
+        elsif ( $line =~ m|^:author: (.+)$| )
+        {
+            $the_author = $1 ;
         }
         elsif ( $line =~ m|^:subject: (.+)$| )
         {
@@ -414,7 +422,7 @@ sub process_dir($$$)
     ########################################
     # Read commit info into memory
 
-    %commit = read_commits( $work_dir , $branch , $limit ) ;
+    %commit = read_commits( $work_dir , $branch , $limit , $show_email ) ;
     @cseq   = split( /:/ , $commit{''} ) ;
 
     ########################################
@@ -466,6 +474,9 @@ EOF
         my $bf = ( $body ne '' ) ? "$body\n\n" : '' ;
         $bf .= $files ;
 
+        my $aline = "Author: $author"
+            . ( ( $email ne '' ) ? " &amp;lt;$email&amp;gt;" : '' ) ;
+
         print <<EOF ;
     <item>
       <guid>$c</guid>
@@ -473,7 +484,7 @@ EOF
       <title>$title</title>
       <author>$author</author>
       <description><pre>Commit: $c
-Author: $author &amp;lt;$email&amp;gt;
+$aline
 Date: $pubDate
 
 $title
