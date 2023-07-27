@@ -481,6 +481,18 @@ EOF
     <item>
       <guid>$c</guid>
       <pubDate>$pubDate</pubDate>
+EOF
+
+        if ( $commit_url ne '' )
+        {
+            my $url = sprintf( $commit_url , $c ) ;
+
+            print <<EOF ;
+      <link>$url</link>
+EOF
+        }
+
+        print <<EOF ;
       <title>$title</title>
       <author>$author</author>
       <description><pre>Commit: $c
