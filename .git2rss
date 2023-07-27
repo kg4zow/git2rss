@@ -1,8 +1,8 @@
 # Per-repo settings to control what 'git2rss' does in this repo
 
 title       = git2rss
-link        = https://jms1.pub/git2rss/
+link        = https://github.com/kg4zow/git2rss
 description = The git2rss source code
 image_url   = ""
 show_email  = user
-commit_url  =
+commit_url  = https://github.com/kg4zow/git2rss/commit/%s
