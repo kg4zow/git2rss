@@ -6,3 +6,4 @@ description = The git2rss source code
 image_url   = ""
 show_email  = user
 commit_url  = https://github.com/kg4zow/git2rss/commit/%s
+limit       = 10

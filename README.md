@@ -29,6 +29,7 @@ description = The git2rss source code
 image_url   = ""
 show_email  = user
 commit_url  = https://github.com/kg4zow/git2rss/commit/%s
+limit       = 10
 ```
 
 The items are:
@@ -50,6 +51,12 @@ The items are:
     * `none` = No email, only show the author's name. This is the default if `show_email` is not specified.
 
 * `commit_url` (optional) = If specified, this will be used as the URL for each commit's "post" in the feed. The value should contain "`%s`" in it somewhere, this tag will have the actual commit hash substituted in it.
+
+* `limit` (optional) = Maximum number of most recent commits to include in the generated RSS file.
+
+    * Setting this to `0` will make the script include every commit in the repo's history.
+
+    * If the repo has multiple branches, only the commits in the current branch will be shown.
 
 Values *can* be enclosed with double-quotes (i.e. the `"` character), but do not have to be.
 
@@ -74,10 +81,6 @@ For example, *this* repo's automatic feed would be ...
 
 ## Future plans
 
-Things I am *planning* to add to the script ...
+(last updaed 2025-03-06)
 
-* Add a "`limit =`" item in the config file, to control how many commits are included in the feed. Currently this value *can* be specified, but only via command line option.
-
-* Command line options to supply the values which are currently being set via the config file. I personally *prefer* using the config file, but it's easy enough to add command line options for these items, and as long as all of the required values (`title`, `link`, and `description`) are specified *somehow*, the config file shouldn't be needed.
-
-Also, the [RSS 2.0 Specification](https://www.rssboard.org/rss-specification) says that the feed's `<link>` element is required, however the [RSS reader app](https://reeder.app/) that I normally use, doesn't appear to *do* anything with it, so I'm curious what, if anything, other RSS readers do with the value, and whether it really *needs* to be there or not.
+The [RSS 2.0 Specification](https://www.rssboard.org/rss-specification) says that the feed's `<link>` element is required, however the [RSS reader app](https://reeder.app/) that I normally use, doesn't appear to *do* anything with it. When I get some time I want to investigate what, if anything, other RSS readers do with the value, and whether it really *needs* to be there or not.
