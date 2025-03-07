@@ -81,6 +81,6 @@ For example, *this* repo's automatic feed would be ...
 
 ## Future plans
 
-(last updaed 2025-03-06)
+(last updated 2025-03-07)
 
 The [RSS 2.0 Specification](https://www.rssboard.org/rss-specification) says that the feed's `<link>` element is required, however the [RSS reader app](https://reeder.app/) that I normally use, doesn't appear to *do* anything with it. When I get some time I want to investigate what, if anything, other RSS readers do with the value, and whether it really *needs* to be there or not.
